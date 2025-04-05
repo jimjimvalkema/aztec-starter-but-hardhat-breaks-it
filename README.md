@@ -1,3 +1,28 @@
+# how to break it
+setup  
+
+setup aztec sandbox    
+```shell
+aztec-up 0.84.0;
+aztec start --sandbox;
+```
+  
+setup js and noir  
+```shell
+nvm install 23;
+nvm use 23;
+npm install --global yarn;
+yarn install;
+aztec-nargo compile;
+yarn codegen;
+```
+
+break it
+```shell
+yarn hardhat test;
+```
+
+
 <div align="center">
   <a href="https://aztec.network">
     <img src="https://github.com/AztecProtocol/aztec-packages/blob/master/docs/static/img/aztec-logo.9cde8ae1.svg" alt="Aztec Protocol Logo" width="300">
@@ -41,7 +66,7 @@ bash -i <(curl -s https://install.aztec.network)
 Install the correct version of the toolkit with:
 
 ```bash
-aztec-up 0.84.0
+aztec-up 0.83.1
 ```
 
 Start the sandbox with:

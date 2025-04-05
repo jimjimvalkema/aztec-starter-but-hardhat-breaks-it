@@ -6,7 +6,6 @@
   "author": "Josh Crites <jc@joshcrites.com>",
   "license": "MIT",
   "private": true,
-  "type": "module",
   "scripts": {
     "fees": "node --loader ts-node/esm scripts/fees.ts",
     "clean": "rm -rf ./src/artifacts ./target",
@@ -26,7 +25,24 @@
     "@aztec/aztec.js": "0.84.0",
     "@aztec/noir-contracts.js": "0.84.0",
     "@aztec/stdlib": "0.84.0",
-    "@types/node": "^22.5.1"
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
+    "@nomicfoundation/hardhat-ethers": "^3.0.0",
+    "@nomicfoundation/hardhat-ignition": "^0.15.10",
+    "@nomicfoundation/hardhat-ignition-ethers": "^0.15.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@nomicfoundation/ignition-core": "^0.15.10",
+    "@typechain/ethers-v6": "^0.5.0",
+    "@typechain/hardhat": "^9.0.0",
+    "@types/chai": "^4.2.0",
+    "@types/node": "^22.5.1",
+    "chai": "^4.2.0",
+    "ethers": "^6.4.0",
+    "hardhat": "^2.22.19",
+    "hardhat-gas-reporter": "^1.0.8",
+    "solidity-coverage": "^0.8.1",
+    "typechain": "^8.3.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",
