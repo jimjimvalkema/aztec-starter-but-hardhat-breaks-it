@@ -6,7 +6,9 @@ import { spawn } from 'child_process';
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee/testing";
 import { getFeeJuiceBalance, type L2AmountClaim, L1FeeJuicePortalManager, FeeJuicePaymentMethodWithClaim, AztecAddress } from "@aztec/aztec.js";
 import { createEthereumChain, createL1Clients } from '@aztec/ethereum';
-import { getDeployedSponsoredFPCAddress } from "../src/utils/sponsored_fpc.js";
+import { getDeployedSponsoredFPCAddress } from "../src/utils/sponsored_fpc";
+
+import { expect } from "chai";
 
 const setupSandbox = async () => {
     const { PXE_URL = 'http://localhost:8080' } = process.env;
@@ -16,80 +18,65 @@ const setupSandbox = async () => {
 };
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-describe("Accounts", () => {
-    let pxe: PXE;
-    let wallets: AccountWallet[] = [];
-    let accounts: CompleteAddress[] = [];
-    let logger: Logger;
+
+async function setup() {
+    const skipSandbox = process.env.SKIP_SANDBOX === 'true';
     let sandboxInstance;
-    let sponsoredPaymentMethod: SponsoredFeePaymentMethod;
-    let randomAccountManagers: AccountManager[] = [];
-    let randomWallets: AccountWallet[] = [];
-    let randomAddresses: AztecAddress[] = [];
+    if (!skipSandbox) {
+        sandboxInstance = spawn("aztec", ["start", "--sandbox"], {
+            detached: true,
+            stdio: 'ignore'
+        })
+        await sleep(15000);
+    }
 
-    let l1PortalManager: L1FeeJuicePortalManager;
-    let feeJuiceAddress: AztecAddress;
-    let skipSandbox: boolean;
+    const logger = createLogger('aztec:aztec-starter:accounts');
+    logger.info("Aztec-Starter tests running.")
 
-    beforeAll(async () => {
-        skipSandbox = process.env.SKIP_SANDBOX === 'true';
-        if (!skipSandbox) {
-            sandboxInstance = spawn("aztec", ["start", "--sandbox"], {
-                detached: true,
-                stdio: 'ignore'
-            })
-            await sleep(15000);
-        }
+    const pxe = await setupSandbox();
 
-        logger = createLogger('aztec:aztec-starter:accounts');
-        logger.info("Aztec-Starter tests running.")
+    const wallets = await getInitialTestAccountsWallets(pxe);
+    const accounts = wallets.map(w => w.getCompleteAddress());
+    const deployedSponseredFPC = await getDeployedSponsoredFPCAddress(pxe);
+    const sponsoredPaymentMethod = new SponsoredFeePaymentMethod(deployedSponseredFPC);
 
-        pxe = await setupSandbox();
+    // generate random accounts
+    const randomAccountManagers = await Promise.all(
+        (await generateSchnorrAccounts(5)).map(
+            a => getSchnorrAccount(pxe, a.secret, a.signingKey, a.salt)
+        )
+    );
+    // get corresponding wallets
+    const randomWallets = await Promise.all(randomAccountManagers.map(am => am.getWallet()));
+    // get corresponding addresses
+    const randomAddresses = await Promise.all(randomWallets.map(async w => (await w.getCompleteAddress()).address));
 
-        wallets = await getInitialTestAccountsWallets(pxe);
-        accounts = wallets.map(w => w.getCompleteAddress());
-        const deployedSponseredFPC = await getDeployedSponsoredFPCAddress(pxe);
-        sponsoredPaymentMethod = new SponsoredFeePaymentMethod(deployedSponseredFPC);
+    // create default ethereum clients
+    const nodeInfo = await pxe.getNodeInfo();
+    const chain = createEthereumChain(['http://localhost:8545'], nodeInfo.l1ChainId);
+    const DefaultMnemonic = 'test test test test test test test test test test test junk';
+    const { publicClient, walletClient } = createL1Clients(chain.rpcUrls, DefaultMnemonic, chain.chainInfo);
 
-        // generate random accounts
-        randomAccountManagers = await Promise.all(
-            (await generateSchnorrAccounts(5)).map(
-                a => getSchnorrAccount(pxe, a.secret, a.signingKey, a.salt)
-            )
-        );
-        // get corresponding wallets
-        randomWallets = await Promise.all(randomAccountManagers.map(am => am.getWallet()));
-        // get corresponding addresses
-        randomAddresses = await Promise.all(randomWallets.map(async w => (await w.getCompleteAddress()).address));
+    const feeJuiceAddress = nodeInfo.protocolContractAddresses.feeJuice;
 
-        // create default ethereum clients
-        const nodeInfo = await pxe.getNodeInfo();
-        const chain = createEthereumChain(['http://localhost:8545'], nodeInfo.l1ChainId);
-        const DefaultMnemonic = 'test test test test test test test test test test test junk';
-        const { publicClient, walletClient } = createL1Clients(chain.rpcUrls, DefaultMnemonic, chain.chainInfo);
+    // create portal manager
+    const l1PortalManager = await L1FeeJuicePortalManager.new(
+        pxe,
+        publicClient,
+        walletClient,
+        logger
+    );
 
-        feeJuiceAddress = nodeInfo.protocolContractAddresses.feeJuice;
+    return {sandboxInstance, pxe, l1PortalManager, feeJuiceAddress,randomAddresses, sponsoredPaymentMethod, accounts, wallets,randomWallets , randomAccountManagers}
 
-        // create portal manager
-        l1PortalManager = await L1FeeJuicePortalManager.new(
-            pxe,
-            publicClient,
-            walletClient,
-            logger
-        );
+}
 
-    })
-
-    afterAll(async () => {
-        if (!skipSandbox) {
-            sandboxInstance!.kill('SIGINT');
-        }
-    })
-
+describe("Accounts", () => {
     it("Creates accounts with fee juice", async () => {
+        const {sandboxInstance, pxe, l1PortalManager, feeJuiceAddress,randomAddresses, sponsoredPaymentMethod, accounts, wallets,randomWallets , randomAccountManagers} = await setup()
         // balance of each random account is 0 before bridge
         let balances = await Promise.all(randomAddresses.map(async a => getFeeJuiceBalance(a, pxe)));
-        balances.forEach(b => expect(b).toBe(0n));
+        balances.forEach(b => expect(b).equals(0n));
 
 
         // bridge funds to unfunded random addresses
@@ -106,7 +93,7 @@ describe("Accounts", () => {
         await EasyPrivateVotingContract.deploy(wallets[0], accounts[0]).send().deployed(); // deploy contract with first funded wallet
 
         // claim and pay to deploy random accounts
-        let sentTxs = [];
+        let sentTxs:any[] = [];
         for (let i = 0; i < randomWallets.length; i++) {
             const paymentMethod = new FeeJuicePaymentMethodWithClaim(randomWallets[i], claims[i]);
             sentTxs.push(randomAccountManagers[i].deploy({ fee: { paymentMethod } }));
@@ -116,15 +103,21 @@ describe("Accounts", () => {
         // balance after deploy with claimed fee juice
         balances = await Promise.all(randomAddresses.map(async a => getFeeJuiceBalance(a, pxe)));
         const amountAfterDeploy = claimAmount - approxMaxDeployCost;
-        balances.forEach(b => expect(b).toBeGreaterThanOrEqual(amountAfterDeploy));
+        balances.forEach(b => expect(Number(b)).greaterThanOrEqual(Number(amountAfterDeploy)));
+
+        sandboxInstance!.kill('SIGINT');
 
     });
 
     it("Deploys first unfunded account from first funded account", async () => {
+        const {sandboxInstance, wallets, randomAccountManagers} = await setup()
         const tx_acc = await randomAccountManagers[0].deploy({ deployWallet: wallets[0] });
+        sandboxInstance!.kill('SIGINT');
     });
 
     it("Sponsored contract deployment", async () => {
+        const {sandboxInstance, pxe,  sponsoredPaymentMethod} = await setup()
+
         const salt = Fr.random();
         const VotingContractArtifact = EasyPrivateVotingContractArtifact
         // const [deployerWallet, adminWallet] = wallets; // using first account as deployer and second as contract admin
@@ -151,24 +144,17 @@ describe("Accounts", () => {
             fee: { paymentMethod: sponsoredPaymentMethod } // without the sponsoredFPC the deployment fails, thus confirming it works
         })
         const receipt = await tx.getReceipt();
-
-        expect(receipt).toEqual(
-            expect.objectContaining({
-                status: TxStatus.PENDING,
-                error: ''
-            }),
-        );
+        
+        expect(receipt.status).equal(TxStatus.PENDING)
 
         const receiptAfterMined = await tx.wait({ wallet: deployerWallet });
-        expect(await pxe.getContractMetadata(deploymentData.address)).toBeDefined();
-        expect((await pxe.getContractMetadata(deploymentData.address)).contractInstance).toBeTruthy();
-        expect(receiptAfterMined).toEqual(
-            expect.objectContaining({
-                status: TxStatus.SUCCESS,
-            }),
-        );
+        expect(await pxe.getContractMetadata(deploymentData.address)).to.not.equal(undefined);
+        expect(Boolean((await pxe.getContractMetadata(deploymentData.address)).contractInstance)).equal(true);
+        expect(receiptAfterMined.status).equal(TxStatus.SUCCESS);
+        
+        expect(receiptAfterMined.contract.instance.address.toString()).equal(deploymentData.address.toString())
 
-        expect(receiptAfterMined.contract.instance.address).toEqual(deploymentData.address)
+        sandboxInstance!.kill('SIGINT');
     })
 
 });

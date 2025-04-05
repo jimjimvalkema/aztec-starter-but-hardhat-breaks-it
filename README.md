@@ -22,6 +22,18 @@ break it
 yarn hardhat test;
 ```
 
+node 20 works
+```shell
+nvm install 20;
+nvm use 20;
+npm install --global yarn;
+yarn install;
+```
+
+(takes a while even on a good machine but it runs, might time out, also it shows retry errors but test does pass 🤷)  
+```shell
+yarn hardhat test;
+```
 
 <div align="center">
   <a href="https://aztec.network">
